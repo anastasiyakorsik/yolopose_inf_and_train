@@ -1,0 +1,11 @@
+PyYAML
+tqdm
+Pillow
+
+numpy
+
+opencv-python
+torch
+torchvision
+
+super_gradients
