@@ -28,11 +28,21 @@ def create_json_with_predictions(data_file: dict, model, conf: float = 0.6):
     """
     try:
         file_name = data_file['file_name']
+        file_id = data_file['file_id']
         full_file_name = os.path.join(INPUT_PATH, data_file['file_name'])
             
         # Output JSON file name
         out_json = file_name + '.json'
-        out_json_path = os.join(OUTPUT_PATH, out_json)
+        out_json_path = os.path.join(OUTPUT_PATH, out_json)
+
+        # Output JSON file name for recording new bboxes
+        out_json_additional = file_name + '_add.json'
+        output_add_file_data = {}
+        output_add_file_data['file_name'] = file_name
+        output_add_file_data['file_id'] = file_id
+        output_add_file_data['file_data'] = []
+        out_add_chains = []
+        out_json_additional_path = os.path.join(OUTPUT_PATH, out_json)
 
         # Inference for each frame of video
         preds, inference_time = get_prediction_per_frame(model, full_file_name, conf=conf)
@@ -44,40 +54,56 @@ def create_json_with_predictions(data_file: dict, model, conf: float = 0.6):
             predicted_vector = pred['markup_vector']
 
             matched = False
+
+            # Compare input bboxes (markup_path) with predicted by models
+
+            # if MATCHED - put skeleton data in markup_vector and chain_vector, 
+            # also calculate markup_frame and markup_time; 
+            # chain_name, markup_parent_id, markup_path - from input
+
             for chain in data_file.get('file_chains', []):
+
                 for markup in chain.get('chain_markups', []):
-                    if markup.get('markup_frame') == frame:
-                        for existing_bbox in markup.get('markup_path', []):
-                            if compare_bboxes(existing_bbox, predicted_path[0]):
+                    markup_frame = markup['markup_frame']
+                    markup_path = markup['markup_path']
+
+                    # YOLO NAS POSE creates detections per frame
+                    # hence, predicted_path is an array of all bboxes per frame
+                    for detected_bbox in predicted_path:
+                        if markup_frame == frame:
+                            if compare_bboxes(markup_path, detected_bbox):
                                 markup['markup_vector'] = predicted_vector
+                                chain['chain_vector'] = predicted_vector
                                 matched = True
                                 break
                 if matched:
                     break
 
+            # if NOT MATCHED - create new chain with all new inner params (except markup_parent_id)
+            # record in additional output JSON
             if not matched:
-                # If bboxes didn't match - create new chain_id
-                new_chain_id = int(uuid.uuid4().int >> 64) % 1000000
+                new_chain_name = int(uuid.uuid4().int >> 64) % 1000000
                 new_chain = {
-                    'chain_id': new_chain_id,
-                    'chain_name': f'chain_{new_chain_id}',
-                    'chain_vector': [],
-                    'chain_dataset_id': data_file.get('dataset_id'),
+                    'chain_name': new_chain_id,
+                    'chain_vector': predicted_vector,
                     'chain_markups': [
                         {
-                            'markup_id': int(uuid.uuid4().int >> 64) % 1000000,
-                            'markup_time': frame,
+                            'markup_parent_id': '',
                             'markup_frame': frame,
+                            'markup_time': frame, #TODO: count time for frame
                             'markup_path': predicted_path,
-                           'markup_vector': predicted_vector
+                            'markup_vector': predicted_vector
                         }
                     ]
                 }
-                data_file.setdefault('file_chains', []).append(new_chain)
+                out_add_chains.append(new_chain)
 
-        # Save new JSON 
+        # Save new JSONs
+        output_add_file_data['file_data'] = out_add_chains
+
         save_json(data_file, out_json_path)
-        py_logger.info(f"Inference results for {file_name} saved and recorded into {out_json_path}")
+        save_json(output_add_file_data, out_json_additional_path)
+        py_logger.info(f"Inference results for {file_name} saved and recorded into {out_json_path} and {out_json_additional_path}")
 
     except Exception as e:
         py_logger.exception(f'Exception occurred in inference.create_json_with_predictions(): {e}', exc_info=True)
@@ -99,8 +125,7 @@ def inference_mode(model, json_files):
             data = load_json(full_json_path)
 
             #TODO: Add on_progress
-            # data_file = data['files']
-            '''
+            data_file = data['files'][0]
             file_name = data_file['file_name']
             full_file_name = os.path.join(INPUT_PATH, data_file['file_name'])
 
@@ -109,7 +134,6 @@ def inference_mode(model, json_files):
 
             # Starting inference process for videos
             create_json_with_predictions(data_file, model)
-            '''
 
     except Exception as e:
         py_logger.exception(f'Exception occurred in inference.inference_mode(): {e}', exc_info=True)
