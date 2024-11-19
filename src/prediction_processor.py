@@ -2,7 +2,7 @@ import json
 import time
 from tqdm import tqdm
 
-
+from logger import py_logger
 
 def prediction_processing(raw_frame_pred):
     """
@@ -71,44 +71,51 @@ def prediction_processing(raw_frame_pred):
         markup_path = boxes
 
         return markup_path, markup_vector
+
     except Exception as err:
-        print(f"ERROR - Exception occured in prediction_processing() {err=}, {type(err)=}")
-        raise
+        py_logger.exception(f"Exception occured in prediction_processor.prediction_processing() {err=}, {type(err)=}", exc_info=True)
+        #TODO: Add on_error
 
 
 def compare_bboxes(existing_bbox: dict, predicted_bbox: dict, threshold: float = 0.5) -> bool:
     """
-    Сравнивает два ббокса и определяет, совпадают ли они.
-    Использует Intersection over Union (IoU) для сравнения.
+    Compares two bboxes (form input JSON and predicted one)
+    Using Intersection over Union (IoU) for comparison
     """
-    x1, y1, w1, h1 = existing_bbox["x"], existing_bbox["y"], existing_bbox["width"], existing_bbox["height"]
-    x2, y2, w2, h2 = predicted_bbox["x"], predicted_bbox["y"], predicted_bbox["width"], predicted_bbox["height"]
+    try:
+        x1, y1, w1, h1 = existing_bbox["x"], existing_bbox["y"], existing_bbox["width"], existing_bbox["height"]
+        x2, y2, w2, h2 = predicted_bbox["x"], predicted_bbox["y"], predicted_bbox["width"], predicted_bbox["height"]
 
-    # Координаты пересечения
-    xi1 = max(x1, x2)
-    yi1 = max(y1, y2)
-    xi2 = min(x1 + w1, x2 + w2)
-    yi2 = min(y1 + h1, y2 + h2)
-    inter_width = max(xi2 - xi1, 0)
-    inter_height = max(yi2 - yi1, 0)
-    intersection = inter_width * inter_height
+        # intersection coordinates
+        xi1 = max(x1, x2)
+        yi1 = max(y1, y2)
+        xi2 = min(x1 + w1, x2 + w2)
+        yi2 = min(y1 + h1, y2 + h2)
+        inter_width = max(xi2 - xi1, 0)
+        inter_height = max(yi2 - yi1, 0)
+        intersection = inter_width * inter_height
 
-    # Площадь объединения
-    union = w1 * h1 + w2 * h2 - intersection
+        # association area
+        union = w1 * h1 + w2 * h2 - intersection
 
-    iou = intersection / union if union != 0 else 0
+        iou = intersection / union if union != 0 else 0
 
-    return iou >= threshold
+        return iou >= threshold
+
+    except Exception as err:
+        py_logger.exception(f"Exception occured in prediction_processor.compare_bboxes() {err=}, {type(err)=}", exc_info=True)
+        #TODO: Add on_error
     
-def get_prediction_per_frame(model, file, conf = 0.6):
+def get_prediction_per_frame(model, file_path: str, conf = 0.6):
     """
-    Bla bla bla
+    Creates model prediction for video frame
+    and processes prediction
     """
     try:
         preds = []
         start_time = time.time()
 
-        model_prediction = model.predict(file["file_name"], conf=conf)
+        model_prediction = model.predict(file_path, conf=conf)
         raw_prediction = [res for res in tqdm(model_prediction._images_prediction_gen, total=model_prediction.n_frames, desc="Processing Video")]
 
         for i in range(len(raw_prediction)):
@@ -123,6 +130,7 @@ def get_prediction_per_frame(model, file, conf = 0.6):
         inference_time = end_time - start_time
 
         return preds, inference_time
+
     except Exception as err:
-        print(f"ERROR - Exception occured in inference_video() {err=}, {type(err)=}")
-        raise
+        py_logger.exception(f"Exception occured in prediction_processor.get_prediction_per_frame() {err=}, {type(err)=}", exc_info=True)
+        #TODO: Add on_error
